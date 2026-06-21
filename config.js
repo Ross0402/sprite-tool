@@ -18,6 +18,13 @@
     CANVAS_W: 300,
     CANVAS_H: 300,
 
+    // The blueprint's proportions (8px head, 24px torso, etc.) are sized
+    // for a 64px export frame. On the larger 300x300 live preview canvas
+    // they'd render as a nearly invisible ~40px-tall figure, so the
+    // preview is scaled up by this factor. Export still uses the raw,
+    // unscaled proportions sized for FRAME_SIZE.
+    PREVIEW_SCALE: 4,
+
     // Sprite sheet export
     FRAME_COUNT: 4,
     FRAME_SIZE: 64,

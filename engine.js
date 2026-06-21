@@ -249,6 +249,12 @@
 
     const pose = idlePose(BODY.torso);
 
+    ctx.save();
+    // Scale the whole figure up around its own anchor point so the fixed
+    // 8/24/10px proportions (sized for a 64px export frame) are actually
+    // visible on the larger live preview canvas.
+    scaleAroundPoint(ctx, BODY.torso, CONFIG.PREVIEW_SCALE);
+
     ctx.lineWidth = CONFIG.LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -278,11 +284,34 @@
       drawLimb(ctx, pose.leftLeg.hip, pose.leftLeg.knee, pose.leftLeg.foot);
       drawLimb(ctx, pose.rightLeg.hip, pose.rightLeg.knee, pose.rightLeg.foot);
     }
+
+    ctx.restore();
+  }
+
+  // Scales the canvas context around an arbitrary point (instead of the
+  // default 0,0 origin) so a figure anchored anywhere on the canvas grows
+  // outward from its own hip rather than skewing toward the corner.
+  function scaleAroundPoint(ctx, point, scale) {
+    ctx.translate(point.x, point.y);
+    ctx.scale(scale, scale);
+    ctx.translate(-point.x, -point.y);
+  }
+
+  // Scaled wrapper for the live preview canvas only. The exporter calls
+  // drawPose() directly (unscaled) since its frames are already sized
+  // for the fixed proportions; the live canvas is much bigger, so it
+  // needs the same scaleAroundPoint treatment as drawBuildState.
+  function drawPoseScaled(ctx, pose, anchor, scale, opts) {
+    ctx.save();
+    scaleAroundPoint(ctx, anchor, scale);
+    drawPose(ctx, pose, opts);
+    ctx.restore();
   }
 
   window.ENGINE = {
     computePose,
     drawPose,
+    drawPoseScaled,
     drawBuildState,
     idlePose,
   };

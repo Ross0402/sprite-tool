@@ -145,7 +145,7 @@
         pose = window.ENGINE.computePose(BODY.torso, STATE.currentMovement, STATE.clock);
       }
 
-      window.ENGINE.drawPose(ctx, pose);
+      window.ENGINE.drawPoseScaled(ctx, pose, BODY.torso, CONFIG.PREVIEW_SCALE);
       STATE.rafId = requestAnimationFrame(tick);
     }
 

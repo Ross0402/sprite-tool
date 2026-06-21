@@ -26,14 +26,26 @@
     PREVIEW_SCALE: 4,
 
     // Sprite sheet export
-    FRAME_COUNT: 4,
+    FRAME_COUNT: 4, // default for looping cycles (walk/run/idle)
     FRAME_SIZE: 64,
+    ONE_SHOT_FRAME_COUNT: 8, // strikes/emotes need more frames to read clearly
+    ONE_SHOT_DURATION_MS: 600, // fallback duration for any move not listed below
+    MOVE_DURATIONS_MS: {
+      jump: 700,
+      jab: 350,
+      cross: 450,
+      haymaker: 650,
+      'front-kick': 500,
+      'roundhouse-kick': 600,
+      wave: 1400,
+      clap: 1200,
+    },
   };
 
   // ---- Global state ----
   const STATE = {
     mode: 'BUILD_MODE', // 'BUILD_MODE' | 'ANIMATE_MODE'
-    currentMovement: 'walk', // 'walk' | 'run' | 'jump'
+    currentMovement: 'walk', // see ENGINE move list: walk/run/idle/jump/jab/cross/haymaker/front-kick/roundhouse-kick/wave/clap
     selectedPart: null, // 'head' | 'torso' | 'arm' | 'leg' | null
     clock: 0, // global animation clock, increments every tick
     animating: false,

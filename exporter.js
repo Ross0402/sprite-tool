@@ -15,7 +15,9 @@
     }
 
     const frameSize = CONFIG.FRAME_SIZE;
-    const frameCount = CONFIG.FRAME_COUNT;
+    const move = STATE.currentMovement;
+    const oneShot = window.ENGINE.isOneShot(move);
+    const frameCount = oneShot ? CONFIG.ONE_SHOT_FRAME_COUNT : CONFIG.FRAME_COUNT;
 
     // Offline hidden wide canvas grid: frameCount x frameSize
     const sheet = document.createElement('canvas');
@@ -29,20 +31,20 @@
       y: frameSize / 2 + 18,
     };
 
-    const move = STATE.currentMovement;
-
     for (let i = 0; i < frameCount; i++) {
-      const stepProgress = i / frameCount; // 0, 0.25, 0.5, 0.75 for 4 frames
-
       ctx.save();
       ctx.translate(i * frameSize, 0);
 
       let pose;
-      if (move === 'jump') {
-        // Slice the one-shot jump arc into equal steps across the strip
-        pose = window.ENGINE.computePose(localTorso, 'jump', 0, stepProgress);
+      if (oneShot) {
+        // Slice the full wind-up -> strike -> recover arc into equal steps,
+        // including the final frame (i / (frameCount - 1)) so the sheet
+        // shows the complete motion start to finish.
+        const stepProgress = frameCount > 1 ? i / (frameCount - 1) : 0;
+        pose = window.ENGINE.computePose(localTorso, move, 0, stepProgress);
       } else {
         // Slice the looping cycle into equal angle steps (0 to 2*PI)
+        const stepProgress = i / frameCount; // 0, 0.25, 0.5, 0.75 for 4 frames
         const t = stepProgress * Math.PI * 2;
         pose = window.ENGINE.computePose(localTorso, move, t);
       }

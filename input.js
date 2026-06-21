@@ -111,20 +111,24 @@
       partButtons.forEach((b) => b.classList.remove('active'));
 
       modeEl.textContent = 'ANIMATE_MODE';
-      setStatus(`Playing: ${move}`);
+      setStatus(`Playing: ${formatMoveName(move)}`);
       startAnimationLoop();
     });
   });
 
   // ---------------------------------------------------------
   // LIVE ANIMATION LOOP (drives the global clock)
+  // One-shot moves (strikes, kicks, emotes, jump) play through their
+  // wind-up/strike/recover arc once, then settle into the idle breathing
+  // pose instead of freezing on the final frame. Looping moves (walk,
+  // run, idle) cycle continuously.
   // ---------------------------------------------------------
   function startAnimationLoop() {
     if (STATE.rafId) cancelAnimationFrame(STATE.rafId);
     STATE.animating = true;
 
-    let jumpStart = null;
-    const JUMP_DURATION = 700; // ms for one full jump arc
+    let oneShotStart = null;
+    let oneShotDone = false;
 
     function tick(timestamp) {
       if (!STATE.animating) return;
@@ -132,17 +136,24 @@
       STATE.clock += 0.05;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      const move = STATE.currentMovement;
       let pose;
-      if (STATE.currentMovement === 'jump') {
-        if (jumpStart === null) jumpStart = timestamp;
-        let progress = (timestamp - jumpStart) / JUMP_DURATION;
-        if (progress > 1) {
-          jumpStart = timestamp; // loop the jump
-          progress = 0;
+
+      if (window.ENGINE.isOneShot(move)) {
+        if (oneShotStart === null) oneShotStart = timestamp;
+        const duration = CONFIG.MOVE_DURATIONS_MS[move] || CONFIG.ONE_SHOT_DURATION_MS;
+        const progress = (timestamp - oneShotStart) / duration;
+
+        if (progress >= 1 && !oneShotDone) {
+          oneShotDone = true;
+          setStatus(`${formatMoveName(move)} complete. Returning to idle.`);
         }
-        pose = window.ENGINE.computePose(BODY.torso, 'jump', 0, progress);
+
+        pose = oneShotDone
+          ? window.ENGINE.computePose(BODY.torso, 'idle', STATE.clock)
+          : window.ENGINE.computePose(BODY.torso, move, 0, progress);
       } else {
-        pose = window.ENGINE.computePose(BODY.torso, STATE.currentMovement, STATE.clock);
+        pose = window.ENGINE.computePose(BODY.torso, move, STATE.clock);
       }
 
       window.ENGINE.drawPoseScaled(ctx, pose, BODY.torso, CONFIG.PREVIEW_SCALE);
@@ -150,6 +161,10 @@
     }
 
     STATE.rafId = requestAnimationFrame(tick);
+  }
+
+  function formatMoveName(move) {
+    return move.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   // ---------------------------------------------------------
@@ -178,7 +193,7 @@
 
   function checkComplete() {
     if (window.STICK.isComplete()) {
-      setStatus('Stickman complete! Choose Walk, Run, or Jump to animate.');
+      setStatus('Stickman complete! Choose a move below to animate.');
     }
   }
 

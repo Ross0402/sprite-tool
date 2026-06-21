@@ -29,10 +29,30 @@
       <hr class="divider" />
 
       <div class="row">
-        <span class="row-label">Animate</span>
+        <span class="row-label">Locomotion</span>
+        <button data-move="idle">Idle</button>
         <button data-move="walk">Walk</button>
         <button data-move="run">Run</button>
         <button data-move="jump">Jump</button>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Punches</span>
+        <button data-move="jab">Jab</button>
+        <button data-move="cross">Cross</button>
+        <button data-move="haymaker">Haymaker</button>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Kicks</span>
+        <button data-move="front-kick">Front Kick</button>
+        <button data-move="roundhouse-kick">Roundhouse</button>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Emotes</span>
+        <button data-move="wave">Wave</button>
+        <button data-move="clap">Clap</button>
       </div>
 
       <hr class="divider" />
@@ -48,9 +68,9 @@
   </div>
 
   <!-- Scripts must load in this exact order so they can talk to each other -->
-  <script src="config.js"></script>
-  <script src="engine.js"></script>
-  <script src="exporter.js"></script>
-  <script src="input.js"></script>
+  <script src="src/config.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/exporter.js"></script>
+  <script src="src/input.js"></script>
 </body>
 </html>

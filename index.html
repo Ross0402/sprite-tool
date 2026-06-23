@@ -1,76 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stickman Sprite Maker</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="UTF-8" />
+<title>Sprite Rig Studio</title>
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Stickman Sprite Maker</h1>
-      <p id="status">Select [Torso], then click the canvas to begin.</p>
-    </header>
+<div class="app" id="app">
 
-    <div class="stage-frame">
-      <canvas id="stage" width="300" height="300"></canvas>
-    </div>
+  <div class="tabbar">
+    <span class="brand">Sprite Rig Studio</span>
+    <div class="tab active" data-tab="draw">1 · Draw</div>
+    <div class="tab disabled" data-tab="rig">2 · Rig</div>
+    <div class="tab disabled" data-tab="pose">3 · Pose</div>
+    <div class="tab" data-tab="library">Library</div>
+    <div class="spacer"></div>
+    <span class="sprite-name-badge" id="spriteNameBadge">No sprite yet</span>
+  </div>
 
-    <div class="panel">
-      <div class="row">
-        <span class="row-label">Build</span>
-        <button data-part="torso">Torso</button>
-        <button data-part="head">Head</button>
-        <button data-part="arm">Arm</button>
-        <button data-part="leg">Leg</button>
+  <div class="body">
+    <div class="sidebar" id="sidebar"><!-- populated per-mode by JS --></div>
+    <div class="stage-wrap">
+      <div class="stage-area">
+        <canvas id="stageCanvas" width="480" height="480"></canvas>
       </div>
-
-      <hr class="divider" />
-
-      <div class="row">
-        <span class="row-label">Locomotion</span>
-        <button data-move="idle">Idle</button>
-        <button data-move="walk">Walk</button>
-        <button data-move="run">Run</button>
-        <button data-move="jump">Jump</button>
-      </div>
-
-      <div class="row">
-        <span class="row-label">Punches</span>
-        <button data-move="jab">Jab</button>
-        <button data-move="cross">Cross</button>
-        <button data-move="haymaker">Haymaker</button>
-      </div>
-
-      <div class="row">
-        <span class="row-label">Kicks</span>
-        <button data-move="front-kick">Front Kick</button>
-        <button data-move="roundhouse-kick">Roundhouse</button>
-      </div>
-
-      <div class="row">
-        <span class="row-label">Emotes</span>
-        <button data-move="wave">Wave</button>
-        <button data-move="clap">Clap</button>
-      </div>
-
-      <hr class="divider" />
-
-      <div class="row" style="justify-content: space-between;">
-        <span class="mode-badge">Mode: <span id="modeLabel">BUILD_MODE</span></span>
-        <div class="row" style="width: auto;">
-          <button id="resetBtn" class="ghost">Reset</button>
-          <button id="downloadBtn" class="primary">Download Sprite Sheet</button>
-        </div>
+      <div class="timeline-wrap hidden" id="timelineWrap">
+        <div class="timeline-strip" id="timelineStrip"></div>
       </div>
     </div>
   </div>
 
-  <!-- Scripts must load in this exact order so they can talk to each other -->
-  <script src="config.js"></script>
-  <script src="engine.js"></script>
-  <script src="exporter.js"></script>
-  <script src="input.js"></script>
+  <div class="statusbar" id="statusbar">Draw your character, or upload an image to begin.</div>
+</div>
+
+<!--
+  Scripts must load in this exact order — each one depends on globals
+  (const/function declarations) defined by the files before it:
+    1. storage.js    - localStorage shim (only activates if window.storage
+                        doesn't already exist, e.g. when NOT running as a
+                        Claude artifact) + all save/load functions
+    2. skeleton.js   - the fixed joint/bone graph (SKELETON, ALL_JOINTS)
+    3. fk.js         - forward-kinematics solver (needs SKELETON)
+    4. rig.js        - bind-pose -> bindInfo derivation (needs SKELETON)
+    5. app.js        - APP state, canvas refs, setMode/tab wiring
+    6. draw.js       - DRAW mode + shared pointer-event wiring
+    7. rigging.js    - RIG mode (joint placement + cutout lasso)
+    8. pose.js       - POSE mode (keyframes, joint-drag-to-angle math)
+    9. render.js     - the actual draw-sprite-to-canvas pipeline
+   10. ui.js         - sidebar/timeline HTML + all their event wiring
+   11. bootstrap.js  - MUST be last: triggers the very first render
+-->
+<script src="src/storage.js"></script>
+<script src="src/skeleton.js"></script>
+<script src="src/fk.js"></script>
+<script src="src/rig.js"></script>
+<script src="src/app.js"></script>
+<script src="src/draw.js"></script>
+<script src="src/rigging.js"></script>
+<script src="src/pose.js"></script>
+<script src="src/render.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/bootstrap.js"></script>
 </body>
 </html>

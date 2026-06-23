@@ -64,5 +64,51 @@ const FK = (function () {
     return { x: alongPoint.x + perp.x, y: alongPoint.y + perp.y };
   }
 
-  return { solvePose, angleToVector, degToRad };
+  // ---------------------------------------------------------
+  // BONE TRANSFORMS (for mesh skinning)
+  // Packages each bone's world position (its fromJoint) + world
+  // rotation into a 2D rigid transform with helpers to convert a point
+  // into that bone's local space, or back out to world space. Used by
+  // mesh.js to skin vertices: a vertex's bind-pose world position is
+  // converted to LOCAL space via the bone's BIND transform, then back
+  // to world space via the bone's CURRENT transform — this is what
+  // makes the vertex "ride along" with the bone as if rigidly attached,
+  // without ever needing to cut the drawing into separate pieces.
+  // ---------------------------------------------------------
+  function makeTransform(position, rotationDeg) {
+    const rad = degToRad(rotationDeg);
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    return {
+      position, rotationDeg,
+      // World point -> this transform's local space (inverse rotate+translate)
+      toLocal(worldPoint) {
+        const dx = worldPoint.x - position.x;
+        const dy = worldPoint.y - position.y;
+        return {
+          x: cos * dx + sin * dy,
+          y: -sin * dx + cos * dy,
+        };
+      },
+      // Local point -> world space (rotate+translate)
+      fromLocal(localPoint) {
+        return {
+          x: position.x + cos * localPoint.x - sin * localPoint.y,
+          y: position.y + sin * localPoint.x + cos * localPoint.y,
+        };
+      },
+    };
+  }
+
+  function boneTransforms(bindInfo, pose) {
+    const solved = solvePose(bindInfo, pose);
+    const transforms = {};
+    SKELETON.bones.forEach((bone) => {
+      const pos = solved.joints[bone.fromJoint];
+      const angle = solved.boneWorldAngles[bone.id];
+      transforms[bone.id] = makeTransform(pos, angle);
+    });
+    return { transforms, solved };
+  }
+
+  return { solvePose, angleToVector, degToRad, makeTransform, boneTransforms };
 })();

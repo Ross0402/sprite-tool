@@ -1,35 +1,73 @@
 // ============================================================
 // render.js
-// The main render pipeline: drawing cutout textures via FK transforms
-// (drawRiggedSprite), joint/skeleton-line overlays, and the top-level
-// redrawStage() dispatcher used by every mode.
-// Depends on: app.js, skeleton.js, fk.js.
+// Draws a deformed mesh by texture-mapping the original drawing onto
+// it, one triangle at a time, using the standard canvas-2D technique:
+// for each triangle, compute the affine transform from the SOURCE
+// (bind-pose / UV) triangle to the DESTINATION (deformed) triangle,
+// clip the canvas to the destination triangle, apply that transform,
+// then draw the source image once (the clip masks out everything
+// except this triangle). Depends on: skeleton.js, fk.js, mesh.js.
 // ============================================================
 
-/* ============================================================
-   RENDER PIPELINE
-   ============================================================ */
-function drawRiggedSprite(ctx, bindInfo, cutouts, pose, offsetX, offsetY) {
-  offsetX = offsetX || 0;
-  offsetY = offsetY || 0;
-  const solved = FK.solvePose(bindInfo, pose);
+function drawMeshTriangle(ctx, image, srcTri, dstTri) {
+  // srcTri/dstTri: arrays of 3 {x,y} points, same winding order.
+  // Solve for the 2x3 affine matrix [a b c d e f] such that:
+  //   dst.x = a*src.x + c*src.y + e
+  //   dst.y = b*src.x + d*src.y + f
+  // using the three point correspondences (a standard 3-point affine
+  // solve — this is the well-known canvas triangle-texture-mapping trick).
+  const [s0, s1, s2] = srcTri;
+  const [d0, d1, d2] = dstTri;
 
-  SKELETON.bones.forEach((bone) => {
-    const cutout = cutouts[bone.id];
-    if (!cutout || !cutout.texture) return;
+  const denom = s0.x * (s1.y - s2.y) - s1.x * (s0.y - s2.y) + s2.x * (s0.y - s1.y);
+  if (Math.abs(denom) < 1e-8) return; // degenerate source triangle, skip
 
-    const worldAngle = solved.boneWorldAngles[bone.id];
-    const pivotWorld = solved.joints[bone.fromJoint];
+  // Solve the affine coefficients via Cramer's rule on the 3x3 system
+  // built from the source triangle (homogeneous coords) for each of
+  // dst.x and dst.y independently.
+  function solveAxis(d0v, d1v, d2v) {
+    const a = (d0v * (s1.y - s2.y) - d1v * (s0.y - s2.y) + d2v * (s0.y - s1.y)) / denom;
+    const c = (s0.x * (d1v - d2v) - s1.x * (d0v - d2v) + s2.x * (d0v - d1v)) / denom;
+    const e = (s0.x * (s1.y * d2v - s2.y * d1v) - s1.x * (s0.y * d2v - s2.y * d0v) + s2.x * (s0.y * d1v - s1.y * d0v)) / denom;
+    return { a, c, e };
+  }
 
-    ctx.save();
-    ctx.translate(offsetX + pivotWorld.x, offsetY + pivotWorld.y);
-    ctx.rotate((worldAngle * Math.PI) / 180);
-    // Texture was rasterized with pivotInTexture marking where the pivot
-    // joint sits inside the texture; draw offset so that point lands at
-    // the (now transformed) origin.
-    ctx.drawImage(cutout.texture, -cutout.pivotInTexture.x, -cutout.pivotInTexture.y);
-    ctx.restore();
+  const xCoef = solveAxis(d0.x, d1.x, d2.x);
+  const yCoef = solveAxis(d0.y, d1.y, d2.y);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(d0.x, d0.y);
+  ctx.lineTo(d1.x, d1.y);
+  ctx.lineTo(d2.x, d2.y);
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.transform(xCoef.a, yCoef.a, xCoef.c, yCoef.c, xCoef.e, yCoef.e);
+  ctx.drawImage(image, 0, 0);
+  ctx.restore();
+}
+
+function drawDeformedMesh(ctx, image, mesh, deformedVertices) {
+  mesh.triangles.forEach((tri) => {
+    const srcTri = tri.map((idx) => mesh.vertices[idx]); // bind-pose positions = UV coords (1:1 with the drawing)
+    const dstTri = tri.map((idx) => deformedVertices[idx]);
+    drawMeshTriangle(ctx, image, srcTri, dstTri);
   });
+}
+
+// ---------------------------------------------------------
+// Top-level: given a sprite (mesh + bindInfo + drawingImage) and a
+// pose, deform and draw it in one call.
+// ---------------------------------------------------------
+function drawPosedSprite(ctx, sprite, pose) {
+  if (!sprite.mesh || !sprite.bindInfo || !sprite.drawingImage) return;
+  const bindPose = { rootPos: sprite.bindInfo.hipBindPos, boneAngles: sprite.bindInfo.restAnglesRelative };
+  const { transforms: bindTransforms } = FK.boneTransforms(sprite.bindInfo, bindPose);
+  const { transforms: currentTransforms } = FK.boneTransforms(sprite.bindInfo, pose);
+  const deformed = MESH.deformMesh(sprite.mesh.vertices, sprite.mesh.skinWeights, bindTransforms, currentTransforms);
+  drawDeformedMesh(ctx, sprite.drawingImage, sprite.mesh, deformed);
+  return deformed; // returned so callers (e.g. joint-handle overlay) can reuse the solved pose
 }
 
 function drawJointHandles(ctx, jointPositions, opts) {
@@ -61,6 +99,21 @@ function drawSkeletonLines(ctx, jointPositions) {
   });
 }
 
+function drawMeshWireframe(ctx, mesh, vertices) {
+  ctx.strokeStyle = '#2f6f5e55';
+  ctx.lineWidth = 1;
+  mesh.triangles.forEach((tri) => {
+    const [a, b, c] = tri.map((idx) => vertices[idx]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y);
+    ctx.closePath();
+    ctx.stroke();
+  });
+}
+
+/* ============================================================
+   TOP-LEVEL STAGE DISPATCHER
+   ============================================================ */
 function redrawStage() {
   SCTX.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
   SCTX.fillStyle = '#ffffff';
@@ -74,12 +127,7 @@ function redrawStage() {
     if (APP.rigStep === 'joints') {
       drawSkeletonLines(SCTX, APP.sprite.jointPositions);
       drawJointHandles(SCTX, APP.sprite.jointPositions);
-      // Preview marker at the next joint to place — none, since position
-      // is unknown until clicked; the sidebar list communicates this instead.
-    } else if (APP.rigStep === 'cutouts') {
-      // Show already-rasterized cutouts as a faint confirmation overlay
-      // is unnecessary (the drawing already shows them); just show the
-      // in-progress lasso path.
+    } else if (APP.rigStep === 'silhouette') {
       if (APP.rigCurrentLasso.length > 0) {
         SCTX.beginPath();
         APP.rigCurrentLasso.forEach((pt, i) => {
@@ -101,13 +149,13 @@ function redrawStage() {
     }
   } else if (APP.mode === 'pose') {
     const frame = currentFrame();
-    if (frame) {
-      drawRiggedSprite(SCTX, APP.sprite.bindInfo, APP.sprite.cutouts, frame);
+    if (frame && APP.sprite.mesh) {
+      const deformed = drawPosedSprite(SCTX, APP.sprite, frame);
+      if (APP.showWireframe && deformed) {
+        drawMeshWireframe(SCTX, APP.sprite.mesh, deformed);
+      }
       const solved = FK.solvePose(APP.sprite.bindInfo, frame);
-      drawSkeletonLines(SCTX, solved.joints);
-      drawJointHandles(SCTX, solved.joints, {
-        fill: '#d97757',
-      });
+      drawJointHandles(SCTX, solved.joints, { fill: '#d97757' });
     }
   } else if (APP.mode === 'library') {
     drawLibraryPreview();

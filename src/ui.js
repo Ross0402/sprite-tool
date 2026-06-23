@@ -1,15 +1,11 @@
 // ============================================================
 // ui.js
 // Sidebar rendering for every mode, the pose-mode timeline strip,
-// and all sidebar control event wiring. The biggest file since the
-// sidebar/timeline HTML and their event handlers are tightly coupled.
+// and all sidebar control event wiring.
 // Depends on: app.js, skeleton.js, render.js, draw.js, rigging.js,
 // pose.js, storage.js (saveCurrentSprite/Movement, refreshLibrary).
 // ============================================================
 
-/* ============================================================
-   SIDEBAR (per-mode)
-   ============================================================ */
 function renderSidebar() {
   const el = document.getElementById('sidebar');
   if (APP.mode === 'draw') el.innerHTML = sidebarDrawHTML();
@@ -69,28 +65,28 @@ function sidebarRigHTML() {
     `;
   }
 
-  // cutouts step
-  const boneIds = SKELETON.bones.map((b) => b.id);
-  const items = boneIds.map((id, i) => {
-    const done = !!APP.sprite.cutouts[id];
-    const cls = i === APP.rigCutoutBoneIndex ? 'current' : (done ? 'done' : '');
-    return `<div class="bone-list-item ${cls}"><span>${formatBoneName(id)}</span><span class="status">${done ? '✓ cut out' : (i === APP.rigCutoutBoneIndex ? 'current' : '')}</span></div>`;
-  }).join('');
-  const allDone = APP.rigCutoutBoneIndex >= boneIds.length;
+  // silhouette step
+  const hasMesh = !!APP.sprite.mesh;
+  const pointCount = APP.rigCurrentLasso.length;
   return `
     <div class="section">
-      <h3>Lasso each body part</h3>
-      <p class="hint">Click points around the drawing to trace ${allDone ? 'all parts — done!' : `<strong>${formatBoneName(boneIds[APP.rigCutoutBoneIndex])}</strong>`}, then close the shape.</p>
-      ${items}
+      <h3>Trace your character's outline</h3>
+      <p class="hint">Click points all the way around your whole character — like tracing its silhouette. This is ONE continuous outline, not per-limb. ${pointCount > 0 ? `${pointCount} point(s) placed.` : ''}</p>
     </div>
     <div class="section btn-row">
-      <button id="closeLassoBtn" ${allDone ? 'disabled' : ''}>Close shape & cut out</button>
-      <button id="undoCutoutBtn">Undo</button>
+      <button id="closeSilhouetteBtn" ${pointCount < 3 ? 'disabled' : ''}>Close outline & build mesh</button>
+      <button id="undoSilhouetteBtn" ${pointCount === 0 ? 'disabled' : ''}>Undo point</button>
+      <button id="clearSilhouetteBtn" ${pointCount === 0 ? 'disabled' : ''}>Clear</button>
     </div>
+    ${hasMesh ? `
+      <div class="section">
+        <p class="hint">✓ Mesh built: ${APP.sprite.mesh.vertices.length} points, ${APP.sprite.mesh.triangles.length} triangles.</p>
+      </div>
+    ` : ''}
     <div class="section">
       <button id="restartRigBtn" class="danger">Restart rig</button>
     </div>
-    ${allDone ? `<div class="section"><button id="toPoseBtn" class="primary">Next: Pose →</button></div>` : ''}
+    ${hasMesh ? `<div class="section"><button id="toPoseBtn" class="primary">Next: Pose →</button></div>` : ''}
   `;
 }
 
@@ -123,6 +119,7 @@ function sidebarPoseHTML() {
       <p class="hint">Drag any joint on the canvas to pose it. Dragging the hip moves the whole body.</p>
     </div>
     <div class="section">
+      <label class="field"><input type="checkbox" id="wireframeToggle" ${APP.showWireframe ? 'checked' : ''} /> Show mesh wireframe</label>
       <button id="toggleTableBtn">${APP.showAngleTable ? 'Hide' : 'Show'} angle table</button>
       ${APP.showAngleTable ? `
         <table class="angle-table">
@@ -209,7 +206,7 @@ function renderFrameThumbnail(frame) {
   const fctx = full.getContext('2d');
   fctx.fillStyle = '#ffffff';
   fctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-  drawRiggedSprite(fctx, APP.sprite.bindInfo, APP.sprite.cutouts, frame);
+  drawPosedSprite(fctx, APP.sprite, frame);
   tctx.drawImage(full, 0, 0, 64, 64);
   return tmp.toDataURL('image/png');
 }
@@ -248,10 +245,12 @@ function wireSidebarEvents() {
     if (undoJointBtn) undoJointBtn.addEventListener('click', undoLastJoint);
     const restartBtn = document.getElementById('restartRigBtn');
     if (restartBtn) restartBtn.addEventListener('click', restartRig);
-    const closeLassoBtn = document.getElementById('closeLassoBtn');
-    if (closeLassoBtn) closeLassoBtn.addEventListener('click', closeLassoAndRasterize);
-    const undoCutoutBtn = document.getElementById('undoCutoutBtn');
-    if (undoCutoutBtn) undoCutoutBtn.addEventListener('click', undoCutout);
+    const closeSilhouetteBtn = document.getElementById('closeSilhouetteBtn');
+    if (closeSilhouetteBtn) closeSilhouetteBtn.addEventListener('click', closeSilhouetteAndBuildMesh);
+    const undoSilhouetteBtn = document.getElementById('undoSilhouetteBtn');
+    if (undoSilhouetteBtn) undoSilhouetteBtn.addEventListener('click', undoSilhouettePoint);
+    const clearSilhouetteBtn = document.getElementById('clearSilhouetteBtn');
+    if (clearSilhouetteBtn) clearSilhouetteBtn.addEventListener('click', clearSilhouette);
     const toPoseBtn = document.getElementById('toPoseBtn');
     if (toPoseBtn) toPoseBtn.addEventListener('click', () => {
       ensureAtLeastOneFrame();
@@ -267,6 +266,8 @@ function wireSidebarEvents() {
     if (rootX) rootX.addEventListener('change', (e) => setRootPosFromTable('x', e.target.value));
     const rootY = document.getElementById('rootYInput');
     if (rootY) rootY.addEventListener('change', (e) => setRootPosFromTable('y', e.target.value));
+    const wireframeToggle = document.getElementById('wireframeToggle');
+    if (wireframeToggle) wireframeToggle.addEventListener('change', (e) => { APP.showWireframe = e.target.checked; redrawStage(); });
     const toggleTableBtn = document.getElementById('toggleTableBtn');
     if (toggleTableBtn) toggleTableBtn.addEventListener('click', () => { APP.showAngleTable = !APP.showAngleTable; renderSidebar(); });
     document.querySelectorAll('.angle-input').forEach((inp) => {

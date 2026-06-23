@@ -5,9 +5,6 @@
 // wiring). Depends on: skeleton.js. Everything else depends on this.
 // ============================================================
 
-/* ============================================================
-   APPLICATION STATE
-   ============================================================ */
 const APP = {
   mode: 'draw', // 'draw' | 'rig' | 'pose' | 'library'
 
@@ -27,20 +24,21 @@ const APP = {
     drawingImage: null,   // loaded Image() of the above, for fast redraw
     jointPositions: {},   // { jointName: {x,y} } in drawing/canvas space — bind pose
     bindInfo: null,       // derived via RIG.deriveBindInfo once all joints placed
-    cutouts: {},          // { boneId: { polygon: [{x,y}], texture: OffscreenCanvas, texOriginInDrawing: {x,y}, pivotInDrawing: {x,y} } }
+    silhouette: null,     // [{x,y}, ...] the one lasso traced around the whole character
+    mesh: null,           // { vertices, triangles, skinWeights } built from the silhouette
   },
 
   // ---- RIG mode sub-state ----
-  rigStep: 'joints', // 'joints' | 'cutouts'
-  rigJointIndex: 0,   // index into RIGGABLE_JOINTS for the next joint to place
-  rigCutoutBoneIndex: 0,
-  rigCurrentLasso: [], // points being drawn for the current cutout lasso
+  rigStep: 'joints', // 'joints' | 'silhouette'
+  rigJointIndex: 0,   // index into ALL_JOINTS for the next joint to place
+  rigCurrentLasso: [], // points being drawn for the in-progress silhouette lasso
 
   // ---- POSE mode state ----
   currentMovement: { id: null, name: 'Untitled movement', frames: [] },
   currentFrameIndex: 0,
   draggingJoint: null, // joint name currently being dragged
   showAngleTable: false,
+  showWireframe: false, // debug overlay: show the mesh triangles
 
   // ---- LIBRARY mode state ----
   librarySprites: [],
@@ -72,7 +70,7 @@ function canEnterRig() {
   return !!APP.sprite.drawingDataUrl;
 }
 function canEnterPose() {
-  return !!APP.sprite.bindInfo && Object.keys(APP.sprite.cutouts).length > 0;
+  return !!APP.sprite.bindInfo && !!APP.sprite.mesh;
 }
 
 function setMode(mode) {
@@ -81,7 +79,7 @@ function setMode(mode) {
     return;
   }
   if (mode === 'pose' && !canEnterPose()) {
-    setStatus('Finish rigging (joints + cutouts) before posing.', 'error');
+    setStatus('Finish rigging (joints + silhouette) before posing.', 'error');
     return;
   }
   APP.mode = mode;

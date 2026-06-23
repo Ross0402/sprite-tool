@@ -1,12 +1,13 @@
 // ============================================================
 // rig.js
 // Derives bindInfo (bone lengths, shoulder offsets, rest angles) from
-// raw joint click positions captured during rigging, plus cutout
-// polygon helpers (point-in-polygon, bounds) used when rasterizing
-// each bone's texture. Depends on: skeleton.js.
+// raw joint click positions captured during rigging. This logic is
+// UNCHANGED from the v1 rigid-cutout tool (it was already correct and
+// tested there) -- only the cutout-polygon helpers were dropped, since
+// mesh.js now owns mesh/silhouette geometry instead.
+// Depends on: skeleton.js.
 // ============================================================
 
-// ---- rig.js ----
 const RIG = (function () {
   function dist(a, b) {
     return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -62,28 +63,5 @@ const RIG = (function () {
     };
   }
 
-  function pointInPolygon(point, polygon) {
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i].x, yi = polygon[i].y;
-      const xj = polygon[j].x, yj = polygon[j].y;
-      const intersect = ((yi > point.y) !== (yj > point.y)) &&
-        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  }
-
-  function polygonBounds(polygon) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    polygon.forEach((p) => {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    });
-    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
-  }
-
-  return { deriveBindInfo, pointInPolygon, polygonBounds };
+  return { deriveBindInfo };
 })();

@@ -1,13 +1,24 @@
-# Sprite Rig Studio
+# Sprite Mesh Studio
 
-A browser-based tool for drawing a 2D character, rigging it with a skeleton, posing it frame by frame, and saving reusable movements that can be applied to any character you rig.
+A browser-based tool for drawing a 2D character, rigging it with a skeleton, and posing it frame by frame — where the artwork itself bends smoothly with the skeleton, instead of splitting into rigid cardboard-cutout pieces.
+
+## What changed from the cutout version
+
+The first version of this tool cut each body part into its own rigid piece (a "paper doll" rig): pivoting an elbow just rotated a stiff forearm-shaped piece, and anything not captured inside a cutout shape disappeared entirely.
+
+This version uses **mesh deformation** instead — the same underlying technique behind tools like Spine or DragonBones, simplified for this tool:
+
+1. After placing joints, you trace **one continuous outline** around your whole character (not one shape per limb).
+2. That outline gets filled with an invisible mesh of small triangles.
+3. Every triangle is "weighted" toward the one or two nearest bones.
+4. When you pose the skeleton, the whole mesh bends smoothly, and the original drawing is stretched along with it — nothing is cut apart, so nothing disappears.
 
 ## Setup
 
-No build step, no dependencies. Just open `index.html` in a browser, or host the whole folder (keep `src/` intact) on something like GitHub Pages.
+No build step, no dependencies. Open `index.html` in a browser, or host the whole folder (keep `src/` intact) somewhere like GitHub Pages.
 
 ```
-sprite-rig-studio/
+sprite-mesh-studio/
 ├── index.html
 ├── style.css
 └── src/
@@ -15,6 +26,7 @@ sprite-rig-studio/
     ├── skeleton.js
     ├── fk.js
     ├── rig.js
+    ├── mesh.js
     ├── app.js
     ├── draw.js
     ├── rigging.js
@@ -24,73 +36,40 @@ sprite-rig-studio/
     └── bootstrap.js
 ```
 
-If you're uploading to GitHub: upload the whole folder structure as-is. The script files load in a specific order and depend on each other, and `style.css` must stay a sibling of `index.html` (not inside `src/`) or the page will load unstyled.
+If uploading to GitHub: upload the whole folder structure as-is, keeping `style.css` next to `index.html` (not inside `src/`), and keeping every file in `src/` together.
 
 ## The four tabs
 
-Work through these in order the first time. Once a sprite is rigged, the **Rig** and **Pose** tabs unlock.
-
 ### 1. Draw
 
-Create your character.
-
-- **Pen tool**: click and drag on the canvas to draw freehand. Pick a brush color and size from the sidebar.
-- **Upload image**: click "Upload image" to bring in a reference image instead of (or underneath) your drawing.
-- **Clear canvas**: wipes the drawing and resets rigging, in case you want to start over.
-- Give your sprite a name in the sidebar — this is what you'll find it under later in the Library.
-
-When you're happy with the drawing, click **Next: Place joints →**.
+Same as before — pen tool or image upload, name your sprite, then move to Rig.
 
 ### 2. Rig
 
-This has two steps: placing joints, then cutting out body parts.
+**Step A — Place joints.** Click on your drawing in the order the sidebar lists (hip, neck, head, shoulders, elbows, hands, knees, feet — 13 total).
 
-**Step A — Place joints**
-Click directly on your drawing to place each joint, in the order the sidebar lists them (hip first, then neck, head, shoulders, elbows, hands, knees, feet — 13 in total). The sidebar always tells you which joint comes next. Click roughly where that part of the body is in your drawing.
+**Step B — Trace one outline.** Once all joints are placed, click points all the way around your *entire* character — one continuous shape, like tracing its silhouette. This is different from the old per-limb lassos: you're outlining the whole body in one go.
 
-- **Undo last**: removes the most recently placed joint so you can reposition it.
-- **Restart rig**: clears every joint and starts over.
+- **Close outline & build mesh**: finalizes the outline and builds the triangle mesh.
+- **Undo point** / **Clear**: adjust your outline before closing it.
+- If a joint ends up outside your traced outline, you'll get a warning after building — the mesh still builds, but that area may not deform well. Retrace a slightly larger outline if that happens.
 
-**Step B — Cut out body parts**
-Once all 13 joints are placed, the sidebar walks you through each body part (torso, head, upper arm, forearm, thigh, shin, etc. — 10 in total). For each one:
-
-1. Click points around the canvas to trace a rough outline (a lasso) around that part of your drawing.
-2. Click **Close shape & cut out** to confirm it.
-3. Move on to the next part.
-
-This is what turns your flat drawing into something that can actually bend and rotate — each cutout becomes its own movable piece, pinned at its joint.
-
-- **Undo**: clears your in-progress lasso, or removes the last completed cutout if you haven't started a new one.
-
-Once every part has a cutout, click **Next: Pose →**.
+Once the mesh is built, click **Next: Pose →**.
 
 ### 3. Pose
 
-This is where you build a movement out of keyframes.
+Same as before: drag any joint to bend the skeleton there, and the drawing itself bends with it. Build keyframes on the timeline, adjust frame duration, type exact bone angles in the angle table if you prefer.
 
-- **Drag any joint** on the canvas to bend the limb around it. Dragging the hip moves the entire character.
-- Each "frame" in the timeline strip (bottom of the screen) is one pose. Click **+** to add a new frame — it starts as a copy of the current one, so you only need to adjust what's changing.
-- Click any thumbnail in the timeline to jump back to that frame and edit it. Click the **×** on a thumbnail to delete that frame (you always need at least one frame left).
-- **Duration (ms)** controls how long that frame holds before moving to the next one.
-- **Root position** lets you type exact hip coordinates instead of dragging.
-- **Show angle table** reveals a raw numeric table of every bone's angle for that frame, if you'd rather type exact numbers than drag.
-- Name your movement (e.g. "walk," "wave," "punch") in the sidebar.
+New: a **Show mesh wireframe** checkbox lets you see the triangle mesh overlaid on your character, which is useful for understanding why a particular area is or isn't deforming the way you expect.
 
-When it feels right, save your work:
-
-- **Save sprite** — stores this drawing + rig in your browser so you can reuse it later.
-- **Save movement** — stores the sequence of frames you just built. Movements are saved independently of any one sprite, since they only store joint angles, not positions tied to a specific drawing.
+Save your sprite and your movement the same way as before.
 
 ### 4. Library
 
-Browse everything you've saved.
-
-- Click a saved **sprite** card and a saved **movement** card (you can mix and match — a movement made on one character works on any other character rigged with the same joint structure).
-- Click **Load into Pose editor** to bring both into the Pose tab together.
-- **Refresh** re-reads your saved library in case something seems out of date.
+Unchanged — browse saved sprites and movements, mix and match them (a movement made on one character works on any other character that shares the same skeleton), and load a combination into the Pose editor.
 
 ## Good to know
 
-- Your saves live in this browser's local storage — they won't show up on a different browser, computer, or in private/incognito mode, and clearing your browser data will erase them.
-- There's no "undo" once you save — saving overwrites a previous sprite/movement only if you reuse the same name and it was already saved in that session. Otherwise each save creates a new entry.
-- A movement is portable across sprites because it stores bone *angles*, not positions — so as long a sprite has all 10 cutouts done, any saved movement will animate it correctly, even if the original drawing was a totally different shape.
+- Your saves live in this browser's local storage — they won't follow you to a different browser, computer, or private/incognito mode.
+- A tighter-fitting outline around your character generally deforms better than a loose one with lots of empty space inside it.
+- Thin parts (like fingers or a narrow tail) may need a smaller, more careful outline trace to deform well, since the mesh is built from your traced shape, not from the drawing's actual ink.

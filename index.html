@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Sprite Rig Studio</title>
+<title>Sprite Mesh Studio</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div class="app" id="app">
 
   <div class="tabbar">
-    <span class="brand">Sprite Rig Studio</span>
+    <span class="brand">Sprite Mesh Studio</span>
     <div class="tab active" data-tab="draw">1 · Draw</div>
     <div class="tab disabled" data-tab="rig">2 · Rig</div>
     <div class="tab disabled" data-tab="pose">3 · Pose</div>
@@ -35,25 +35,25 @@
 
 <!--
   Scripts must load in this exact order — each one depends on globals
-  (const/function declarations) defined by the files before it:
-    1. storage.js    - localStorage shim (only activates if window.storage
-                        doesn't already exist, e.g. when NOT running as a
-                        Claude artifact) + all save/load functions
-    2. skeleton.js   - the fixed joint/bone graph (SKELETON, ALL_JOINTS)
-    3. fk.js         - forward-kinematics solver (needs SKELETON)
-    4. rig.js        - bind-pose -> bindInfo derivation (needs SKELETON)
-    5. app.js        - APP state, canvas refs, setMode/tab wiring
-    6. draw.js       - DRAW mode + shared pointer-event wiring
-    7. rigging.js    - RIG mode (joint placement + cutout lasso)
-    8. pose.js       - POSE mode (keyframes, joint-drag-to-angle math)
-    9. render.js     - the actual draw-sprite-to-canvas pipeline
-   10. ui.js         - sidebar/timeline HTML + all their event wiring
-   11. bootstrap.js  - MUST be last: triggers the very first render
+  defined by the files before it:
+    1. storage.js   - localStorage shim + save/load functions
+    2. skeleton.js  - the fixed joint/bone graph (SKELETON, ALL_JOINTS)
+    3. fk.js        - forward-kinematics solver + bone transforms (needs SKELETON)
+    4. rig.js       - bind-pose -> bindInfo derivation (needs SKELETON)
+    5. mesh.js      - silhouette triangulation + skinning weights + deformation
+    6. app.js       - APP state, canvas refs, setMode/tab wiring
+    7. draw.js      - DRAW mode + shared pointer-event wiring
+    8. rigging.js   - RIG mode (joint placement + silhouette tracing)
+    9. pose.js      - POSE mode (keyframes, joint-drag-to-angle math)
+   10. render.js    - the mesh-deform draw pipeline (triangle texture mapping)
+   11. ui.js        - sidebar/timeline HTML + all their event wiring
+   12. bootstrap.js - MUST be last: triggers the very first render
 -->
 <script src="src/storage.js"></script>
 <script src="src/skeleton.js"></script>
 <script src="src/fk.js"></script>
 <script src="src/rig.js"></script>
+<script src="src/mesh.js"></script>
 <script src="src/app.js"></script>
 <script src="src/draw.js"></script>
 <script src="src/rigging.js"></script>

@@ -1,13 +1,12 @@
 // ============================================================
 // rigging.js
 // RIG mode: placing the 13 skeleton joints on the drawing, then
-// lassoing + rasterizing a cutout texture for each bone. Depends on:
-// app.js, skeleton.js, rig.js.
+// tracing ONE silhouette lasso around the whole character (replacing
+// v1's per-bone cutout lassos), which is triangulated into a mesh and
+// skinned to the skeleton. Depends on: app.js, skeleton.js, rig.js,
+// mesh.js.
 // ============================================================
 
-/* ============================================================
-   RIG MODE
-   ============================================================ */
 function rigPointerDown(e) {
   if (APP.mode !== 'rig') return;
   const p = stagePointFromEvent(e);
@@ -22,7 +21,7 @@ function rigPointerDown(e) {
     }
     renderSidebar();
     redrawStage();
-  } else if (APP.rigStep === 'cutouts') {
+  } else if (APP.rigStep === 'silhouette') {
     APP.rigCurrentLasso.push(p);
     redrawStage();
   }
@@ -32,9 +31,9 @@ function rigPointerDown(e) {
 function finishJointPlacement() {
   try {
     APP.sprite.bindInfo = RIG.deriveBindInfo(APP.sprite.jointPositions);
-    APP.rigStep = 'cutouts';
-    APP.rigCutoutBoneIndex = 0;
-    setStatus('Joints placed. Now lasso each highlighted body part to cut it out.', 'success');
+    APP.sprite.bindInfo.hipBindPos = APP.sprite.jointPositions.hip;
+    APP.rigStep = 'silhouette';
+    setStatus('Joints placed. Now trace ONE outline around your whole character.', 'success');
   } catch (err) {
     setStatus('Could not compute the skeleton: ' + err.message, 'error');
   }
@@ -53,91 +52,71 @@ function restartRig() {
   APP.rigJointIndex = 0;
   APP.sprite.jointPositions = {};
   APP.sprite.bindInfo = null;
-  APP.sprite.cutouts = {};
+  APP.sprite.silhouette = null;
+  APP.sprite.mesh = null;
   APP.rigCurrentLasso = [];
   refreshTabs();
   renderSidebar();
   redrawStage();
 }
 
-function closeLassoAndRasterize() {
-  const boneIds = SKELETON.bones.map((b) => b.id);
-  const boneId = boneIds[APP.rigCutoutBoneIndex];
-  if (!boneId) return;
+function undoSilhouettePoint() {
+  if (APP.rigCurrentLasso.length > 0) {
+    APP.rigCurrentLasso.pop();
+    redrawStage();
+  }
+}
+
+function clearSilhouette() {
+  APP.rigCurrentLasso = [];
+  redrawStage();
+}
+
+function closeSilhouetteAndBuildMesh() {
   if (APP.rigCurrentLasso.length < 3) {
-    setStatus('Draw at least 3 points to make a cutout region.', 'error');
+    setStatus('Trace at least 3 points around your character to make an outline.', 'error');
     return;
   }
 
   const polygon = APP.rigCurrentLasso.slice();
-  const bounds = RIG.polygonBounds(polygon);
-  const padX = Math.max(2, bounds.width * 0.05);
-  const padY = Math.max(2, bounds.height * 0.05);
-  const texW = Math.max(1, Math.ceil(bounds.width + padX * 2));
-  const texH = Math.max(1, Math.ceil(bounds.height + padY * 2));
 
-  const tex = document.createElement('canvas');
-  tex.width = texW;
-  tex.height = texH;
-  const tctx = tex.getContext('2d');
-
-  // Clip to the lasso polygon (shifted into texture-local space), then
-  // draw the full sprite drawing shifted so the right region lands inside.
-  tctx.save();
-  tctx.beginPath();
-  polygon.forEach((pt, i) => {
-    const lx = pt.x - bounds.minX + padX;
-    const ly = pt.y - bounds.minY + padY;
-    if (i === 0) tctx.moveTo(lx, ly); else tctx.lineTo(lx, ly);
+  // Every joint must fall inside (or very near) the silhouette, or the
+  // skinning weights will be computed against bone segments outside the
+  // mesh entirely, which produces nonsense deformation. Warn but don't
+  // hard-block, since a slightly-outside hand/foot tip is common and
+  // still produces acceptable results in practice.
+  let outsideCount = 0;
+  ALL_JOINTS.forEach((j) => {
+    const p = APP.sprite.jointPositions[j];
+    if (p && !MESH.pointInPolygon(p, polygon)) outsideCount++;
   });
-  tctx.closePath();
-  tctx.clip();
-  tctx.drawImage(APP.sprite.drawingImage, -(bounds.minX - padX), -(bounds.minY - padY));
-  tctx.restore();
 
-  // The bone's pivot joint (fromJoint) position in drawing space, and
-  // where that pivot lands within the texture-local coordinate space —
-  // both are needed at render time to place+rotate the texture correctly.
-  const bone = bonesById()[boneId];
-  const pivotInDrawing = APP.sprite.jointPositions[bone.fromJoint];
-  const pivotInTexture = {
-    x: pivotInDrawing.x - bounds.minX + padX,
-    y: pivotInDrawing.y - bounds.minY + padY,
-  };
-
-  APP.sprite.cutouts[boneId] = {
-    polygon,
-    texture: tex,
-    pivotInTexture,
-  };
-
-  APP.rigCurrentLasso = [];
-  APP.rigCutoutBoneIndex++;
-  if (APP.rigCutoutBoneIndex >= boneIds.length) {
-    setStatus('All cutouts complete! You can now move to Pose.', 'success');
-  } else {
-    setStatus(`Cutout saved. Now lasso: ${formatBoneName(boneIds[APP.rigCutoutBoneIndex])}`, 'success');
-  }
-  refreshTabs();
-  renderSidebar();
-  redrawStage();
-}
-
-function undoCutout() {
-  const boneIds = SKELETON.bones.map((b) => b.id);
-  if (APP.rigCurrentLasso.length > 0) {
+  try {
+    const meshGeo = MESH.buildMesh(polygon, 14);
+    const skinWeights = MESH.computeSkinWeights(meshGeo.vertices, APP.sprite.jointPositions, SKELETON.bones);
+    APP.sprite.silhouette = polygon;
+    APP.sprite.mesh = { vertices: meshGeo.vertices, triangles: meshGeo.triangles, skinWeights };
     APP.rigCurrentLasso = [];
+
+    if (outsideCount > 0) {
+      setStatus(`Mesh built (${meshGeo.vertices.length} points, ${meshGeo.triangles.length} triangles), but ${outsideCount} joint(s) fall outside your traced outline — those areas may not deform correctly. You can retrace a larger outline from the Rig tab if needed.`, 'error');
+    } else {
+      setStatus(`Mesh built: ${meshGeo.vertices.length} points, ${meshGeo.triangles.length} triangles. You can now move to Pose.`, 'success');
+    }
+    refreshTabs();
+    renderSidebar();
     redrawStage();
-    return;
+  } catch (err) {
+    setStatus('Could not build the mesh: ' + err.message, 'error');
   }
-  if (APP.rigCutoutBoneIndex === 0) return;
-  APP.rigCutoutBoneIndex--;
-  delete APP.sprite.cutouts[boneIds[APP.rigCutoutBoneIndex]];
-  refreshTabs();
-  renderSidebar();
-  redrawStage();
 }
 
 function formatBoneName(boneId) {
   return boneId.replace(/_/g, ' ');
+}
+
+function bonesById() {
+  const map = {};
+  SKELETON.bones.forEach((b) => { map[b.id] = b; });
+  return map;
 }

@@ -6,22 +6,9 @@
 // Depends on: app.js (APP, genId, setStatus), skeleton.js (SKELETON).
 // ============================================================
 
-/* ============================================================
-   STORAGE SHIM
-   Inside a Claude artifact, window.storage already exists (the
-   persistent key-value API). When this file is hosted elsewhere
-   (e.g. GitHub Pages, opened as a plain local file), window.storage
-   doesn't exist — so we provide a drop-in replacement with the same
-   async get/set/delete/list shape, backed by localStorage instead.
-   Every save/load function below calls window.storage.* exactly the
-   same way regardless of which backend is actually running.
-   ============================================================ */
 if (!window.storage) {
   window.storage = (function () {
     function k(key, shared) {
-      // "shared" has no real meaning for a single browser's localStorage
-      // (there's no other user to share with), but we keep separate
-      // namespaces so the key shape matches the documented API exactly.
       return (shared ? 'shared:' : 'personal:') + key;
     }
     return {
@@ -39,8 +26,6 @@ if (!window.storage) {
           localStorage.setItem(k(key, shared), value);
           return { key, value, shared: !!shared };
         } catch (err) {
-          // Most likely cause: storage quota exceeded (drawings/cutout
-          // textures are base64 PNGs and can be sizeable).
           throw new Error('localStorage set failed: ' + err.message);
         }
       },
@@ -69,67 +54,38 @@ if (!window.storage) {
 
 /* ============================================================
    PERSISTENT STORAGE (window.storage) — sprites & movements
+   The mesh is plain JSON (vertices/triangles/skinWeights are just
+   numbers and indices), so unlike v1's per-bone cutout textures,
+   nothing here needs canvas->dataURL conversion except the original
+   drawing image itself.
    ============================================================ */
-
-// Canvases/Images can't be JSON-serialized directly, so cutout textures
-// are converted to data URLs for storage and reconstructed (Image ->
-// drawn onto a fresh canvas) on load.
 function serializeSprite() {
-  const cutoutsOut = {};
-  Object.keys(APP.sprite.cutouts).forEach((boneId) => {
-    const c = APP.sprite.cutouts[boneId];
-    cutoutsOut[boneId] = {
-      polygon: c.polygon,
-      pivotInTexture: c.pivotInTexture,
-      textureDataUrl: c.texture.toDataURL('image/png'),
-    };
-  });
   return {
     id: APP.sprite.id || genId(),
     name: APP.sprite.name,
     drawingDataUrl: APP.sprite.drawingDataUrl,
     jointPositions: APP.sprite.jointPositions,
     bindInfo: APP.sprite.bindInfo,
-    cutouts: cutoutsOut,
+    silhouette: APP.sprite.silhouette,
+    mesh: APP.sprite.mesh,
     savedAt: Date.now(),
   };
 }
 
 function deserializeSpriteInto(record, callback) {
-  const pending = Object.keys(record.cutouts).length;
-  const cutouts = {};
-  let remaining = pending;
-
-  function done() {
-    APP.sprite = {
-      id: record.id,
-      name: record.name,
-      drawingDataUrl: record.drawingDataUrl,
-      drawingImage: null,
-      jointPositions: record.jointPositions,
-      bindInfo: record.bindInfo,
-      cutouts,
-    };
-    const img = new Image();
-    img.onload = () => { APP.sprite.drawingImage = img; if (callback) callback(); };
-    img.src = record.drawingDataUrl;
-  }
-
-  if (pending === 0) { done(); return; }
-
-  Object.keys(record.cutouts).forEach((boneId) => {
-    const c = record.cutouts[boneId];
-    const img = new Image();
-    img.onload = () => {
-      const tex = document.createElement('canvas');
-      tex.width = img.width; tex.height = img.height;
-      tex.getContext('2d').drawImage(img, 0, 0);
-      cutouts[boneId] = { polygon: c.polygon, pivotInTexture: c.pivotInTexture, texture: tex };
-      remaining--;
-      if (remaining === 0) done();
-    };
-    img.src = c.textureDataUrl;
-  });
+  APP.sprite = {
+    id: record.id,
+    name: record.name,
+    drawingDataUrl: record.drawingDataUrl,
+    drawingImage: null,
+    jointPositions: record.jointPositions,
+    bindInfo: record.bindInfo,
+    silhouette: record.silhouette,
+    mesh: record.mesh,
+  };
+  const img = new Image();
+  img.onload = () => { APP.sprite.drawingImage = img; if (callback) callback(); };
+  img.src = record.drawingDataUrl;
 }
 
 async function saveCurrentSprite() {
@@ -281,9 +237,8 @@ function loadSelectedCombination() {
   deserializeSpriteInto(spriteRecord, () => {
     APP.currentMovement = { id: movementRecord.id, name: movementRecord.name, frames: JSON.parse(JSON.stringify(movementRecord.frames)) };
     APP.currentFrameIndex = 0;
-    APP.rigStep = 'cutouts';
+    APP.rigStep = 'silhouette';
     APP.rigJointIndex = ALL_JOINTS.length;
-    APP.rigCutoutBoneIndex = SKELETON.bones.length;
     setMode('pose');
     setStatus(`Loaded "${spriteRecord.name}" with movement "${movementRecord.name}".`, 'success');
   });

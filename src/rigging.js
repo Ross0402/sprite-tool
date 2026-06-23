@@ -23,6 +23,7 @@ function rigPointerDown(e) {
     redrawStage();
   } else if (APP.rigStep === 'silhouette') {
     APP.rigCurrentLasso.push(p);
+    renderSidebar();
     redrawStage();
   }
   e.preventDefault();

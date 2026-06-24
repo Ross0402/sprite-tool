@@ -94,7 +94,7 @@ function closeSilhouetteAndBuildMesh() {
 
   try {
     const meshGeo = MESH.buildMesh(polygon, 14);
-    const skinWeights = MESH.computeSkinWeights(meshGeo.vertices, APP.sprite.jointPositions, SKELETON.bones);
+    const skinWeights = MESH.computeSkinWeights(meshGeo.vertices, meshGeo.triangles, APP.sprite.jointPositions, SKELETON.bones);
     APP.sprite.silhouette = polygon;
     APP.sprite.mesh = { vertices: meshGeo.vertices, triangles: meshGeo.triangles, skinWeights };
     APP.rigCurrentLasso = [];

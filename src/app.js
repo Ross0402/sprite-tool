@@ -1,50 +1,30 @@
 // ============================================================
 // app.js
-// Global APP state object, canvas/context references, small utility
-// functions (setStatus, genId), and mode-switching (setMode, tab
-// wiring). Depends on: skeleton.js. Everything else depends on this.
+// Global APP state, canvas/context references, small utility
+// functions (setStatus, genId), and mode-switching. The workflow is
+// deliberately simple: the built-in stickman loads immediately, ready
+// to pose -- no drawing or manual joint-clicking required. Depends
+// on: skeleton.js, default-stickman.js.
 // ============================================================
 
 const APP = {
-  mode: 'draw', // 'draw' | 'rig' | 'pose' | 'library'
+  mode: 'pose', // 'pose' | 'library' | 'export'
 
-  // ---- DRAW mode state ----
-  drawColor: '#1a1a1a',
-  drawSize: 4,
-  isDrawing: false,
-  drawCanvas: null, // offscreen canvas holding the baked drawing
-  drawCtx: null,
-  lastDrawPoint: null,
+  sprite: null, // set by loadBuiltInStickman() at bootstrap
 
-  // ---- Current sprite being worked on ----
-  sprite: {
-    id: null,
-    name: 'Untitled sprite',
-    drawingDataUrl: null, // baked PNG of the drawing
-    drawingImage: null,   // loaded Image() of the above, for fast redraw
-    jointPositions: {},   // { jointName: {x,y} } in drawing/canvas space — bind pose
-    bindInfo: null,       // derived via RIG.deriveBindInfo once all joints placed
-    silhouette: null,     // [{x,y}, ...] the one lasso traced around the whole character
-    mesh: null,           // { vertices, triangles, skinWeights } built from the silhouette
-  },
-
-  // ---- RIG mode sub-state ----
-  rigStep: 'joints', // 'joints' | 'silhouette'
-  rigJointIndex: 0,   // index into ALL_JOINTS for the next joint to place
-  rigCurrentLasso: [], // points being drawn for the in-progress silhouette lasso
-
-  // ---- POSE mode state ----
   currentMovement: { id: null, name: 'Untitled movement', frames: [] },
   currentFrameIndex: 0,
-  draggingJoint: null, // joint name currently being dragged
+  draggingJoint: null,
   showAngleTable: false,
-  showWireframe: false, // debug overlay: show the mesh triangles
 
-  // ---- LIBRARY mode state ----
   librarySprites: [],
   libraryMovements: [],
   librarySelectedSpriteId: null,
   librarySelectedMovementId: null,
+
+  // ---- EXPORT mode state ----
+  exportFrameCount: 8,
+  exportFrameSize: 128,
 };
 
 const CANVAS_SIZE = 480;
@@ -64,24 +44,23 @@ function genId() {
 }
 
 /* ============================================================
-   MODE SWITCHING
+   LOADING THE BUILT-IN STICKMAN
    ============================================================ */
-function canEnterRig() {
-  return !!APP.sprite.drawingDataUrl;
-}
-function canEnterPose() {
-  return !!APP.sprite.bindInfo && !!APP.sprite.mesh;
+function loadBuiltInStickman() {
+  const sprite = buildDefaultStickmanSprite();
+  sprite.id = genId();
+  sprite.bindInfo = buildDefaultStickmanBindInfo();
+  sprite.bindInfo.hipBindPos = { x: CANVAS_SIZE / 2, y: CANVAS_SIZE / 2 + 60 };
+  APP.sprite = sprite;
+  APP.currentMovement = { id: null, name: 'Untitled movement', frames: [] };
+  APP.currentFrameIndex = 0;
+  ensureAtLeastOneFrame();
 }
 
+/* ============================================================
+   MODE SWITCHING
+   ============================================================ */
 function setMode(mode) {
-  if (mode === 'rig' && !canEnterRig()) {
-    setStatus('Draw or upload a sprite first.', 'error');
-    return;
-  }
-  if (mode === 'pose' && !canEnterPose()) {
-    setStatus('Finish rigging (joints + silhouette) before posing.', 'error');
-    return;
-  }
   APP.mode = mode;
   refreshTabs();
   renderSidebar();
@@ -90,18 +69,15 @@ function setMode(mode) {
   if (mode === 'pose') renderTimeline();
   if (mode === 'library') { refreshLibrary(); }
   renderLibraryGrid();
+  renderExportPanel();
 }
 
 function refreshTabs() {
   document.querySelectorAll('.tab').forEach((tab) => {
     const t = tab.getAttribute('data-tab');
     tab.classList.toggle('active', t === APP.mode);
-    if (t === 'rig') tab.classList.toggle('disabled', !canEnterRig());
-    if (t === 'pose') tab.classList.toggle('disabled', !canEnterPose());
   });
-  document.getElementById('spriteNameBadge').textContent = APP.sprite.drawingDataUrl
-    ? APP.sprite.name
-    : 'No sprite yet';
+  document.getElementById('spriteNameBadge').textContent = APP.sprite ? APP.sprite.name : 'No sprite loaded';
 }
 
 document.querySelectorAll('.tab').forEach((tab) => {

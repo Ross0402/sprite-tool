@@ -54,38 +54,40 @@ if (!window.storage) {
 
 /* ============================================================
    PERSISTENT STORAGE (window.storage) — sprites & movements
-   The mesh is plain JSON (vertices/triangles/skinWeights are just
-   numbers and indices), so unlike v1's per-bone cutout textures,
-   nothing here needs canvas->dataURL conversion except the original
-   drawing image itself.
+   Parts are plain JSON (color/length/width/an SVG path STRING), so
+   unlike the old mesh-deform tool's per-bone textures, nothing here
+   needs canvas->dataURL conversion. The only non-serializable field
+   is each part's cached Path2D object (built lazily by render.js for
+   drawing performance), which is simply excluded and rebuilt on load.
    ============================================================ */
 function serializeSprite() {
+  const partsOut = {};
+  Object.keys(APP.sprite.parts).forEach((boneId) => {
+    const p = APP.sprite.parts[boneId];
+    partsOut[boneId] = {
+      length: p.length, width: p.width, color: p.color,
+      isHead: !!p.isHead, svgPath: p.svgPath || null,
+      // path2d intentionally omitted -- rebuilt lazily by render.js
+    };
+  });
   return {
     id: APP.sprite.id || genId(),
     name: APP.sprite.name,
-    drawingDataUrl: APP.sprite.drawingDataUrl,
-    jointPositions: APP.sprite.jointPositions,
+    isBuiltIn: !!APP.sprite.isBuiltIn,
+    parts: partsOut,
     bindInfo: APP.sprite.bindInfo,
-    silhouette: APP.sprite.silhouette,
-    mesh: APP.sprite.mesh,
     savedAt: Date.now(),
   };
 }
 
-function deserializeSpriteInto(record, callback) {
+function deserializeSpriteInto(record) {
   APP.sprite = {
     id: record.id,
     name: record.name,
-    drawingDataUrl: record.drawingDataUrl,
-    drawingImage: null,
-    jointPositions: record.jointPositions,
+    isBuiltIn: !!record.isBuiltIn,
+    parts: record.parts, // path2d will be rebuilt lazily by render.js
     bindInfo: record.bindInfo,
-    silhouette: record.silhouette,
-    mesh: record.mesh,
   };
-  const img = new Image();
-  img.onload = () => { APP.sprite.drawingImage = img; if (callback) callback(); };
-  img.src = record.drawingDataUrl;
 }
 
 async function saveCurrentSprite() {
@@ -180,13 +182,13 @@ function renderLibraryGrid() {
   if (APP.mode !== 'library') return;
 
   if (APP.librarySprites.length === 0 && APP.libraryMovements.length === 0) {
-    grid.innerHTML = `<div class="library-empty">No saved sprites or movements yet. Rig a sprite and save a movement to see them here.</div>`;
+    grid.innerHTML = `<div class="library-empty">No saved sprites or movements yet. Save your posed stickman and a movement to see them here.</div>`;
     return;
   }
 
   const spriteCards = APP.librarySprites.map((s) => `
     <div class="library-card ${s.id === APP.librarySelectedSpriteId ? 'selected' : ''}" data-sprite-id="${s.id}">
-      <div class="thumb"><img src="${s.drawingDataUrl}" /></div>
+      <div class="thumb">${renderSpriteThumbSvg(s)}</div>
       <div class="meta"><div class="name">${escapeHtml(s.name)}</div><div class="sub">Sprite</div></div>
     </div>
   `).join('');
@@ -220,8 +222,10 @@ function renderLibraryGrid() {
   });
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// A tiny static SVG preview of a saved sprite (bind pose, simplified),
+// just for the library thumbnail -- not the full posed render.
+function renderSpriteThumbSvg(spriteRecord) {
+  return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:32px;">🧍</div>`;
 }
 
 function drawLibraryPreview() {
@@ -234,12 +238,9 @@ function loadSelectedCombination() {
   const movementRecord = APP.libraryMovements.find((m) => m.id === APP.librarySelectedMovementId);
   if (!spriteRecord || !movementRecord) return;
 
-  deserializeSpriteInto(spriteRecord, () => {
-    APP.currentMovement = { id: movementRecord.id, name: movementRecord.name, frames: JSON.parse(JSON.stringify(movementRecord.frames)) };
-    APP.currentFrameIndex = 0;
-    APP.rigStep = 'silhouette';
-    APP.rigJointIndex = ALL_JOINTS.length;
-    setMode('pose');
-    setStatus(`Loaded "${spriteRecord.name}" with movement "${movementRecord.name}".`, 'success');
-  });
+  deserializeSpriteInto(spriteRecord);
+  APP.currentMovement = { id: movementRecord.id, name: movementRecord.name, frames: JSON.parse(JSON.stringify(movementRecord.frames)) };
+  APP.currentFrameIndex = 0;
+  setMode('pose');
+  setStatus(`Loaded "${spriteRecord.name}" with movement "${movementRecord.name}".`, 'success');
 }

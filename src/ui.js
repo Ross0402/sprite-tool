@@ -1,95 +1,34 @@
 // ============================================================
 // ui.js
-// Sidebar rendering for every mode, the pose-mode timeline strip,
-// and all sidebar control event wiring.
-// Depends on: app.js, skeleton.js, render.js, draw.js, rigging.js,
-// pose.js, storage.js (saveCurrentSprite/Movement, refreshLibrary).
+// Sidebar rendering for every mode, the pose-mode timeline strip, the
+// export panel, and all control event wiring.
+// Depends on: app.js, skeleton.js, render.js, pose.js, storage.js,
+// export.js.
 // ============================================================
 
 function renderSidebar() {
   const el = document.getElementById('sidebar');
-  if (APP.mode === 'draw') el.innerHTML = sidebarDrawHTML();
-  else if (APP.mode === 'rig') el.innerHTML = sidebarRigHTML();
-  else if (APP.mode === 'pose') el.innerHTML = sidebarPoseHTML();
+  if (APP.mode === 'pose') el.innerHTML = sidebarPoseHTML();
   else if (APP.mode === 'library') el.innerHTML = sidebarLibraryHTML();
+  else if (APP.mode === 'export') el.innerHTML = sidebarExportHTML();
   wireSidebarEvents();
 }
 
-function sidebarDrawHTML() {
-  const colors = ['#1a1a1a', '#c2614a', '#d97757', '#e8c468', '#6fae8f', '#5a8fc2', '#8c69b8', '#ffffff'];
-  return `
-    <div class="section">
-      <h3>Sprite name</h3>
-      <input type="text" id="spriteNameInput" value="${escapeAttr(APP.sprite.name)}" />
-    </div>
-    <div class="section">
-      <h3>Tool</h3>
-      <div class="btn-row">
-        <button id="uploadImgBtn">Upload image</button>
-        <input type="file" id="uploadImgInput" accept="image/*" class="hidden" />
-      </div>
-      <label class="field">Brush color</label>
-      <div class="swatch-row">
-        ${colors.map((c) => `<div class="swatch ${c === APP.drawColor ? 'active' : ''}" data-color="${c}" style="background:${c}; ${c === '#ffffff' ? 'box-shadow: inset 0 0 0 1px #999;' : ''}"></div>`).join('')}
-      </div>
-      <label class="field">Brush size: <span id="brushSizeLabel">${APP.drawSize}</span>px</label>
-      <input type="range" id="brushSizeRange" min="1" max="24" value="${APP.drawSize}" />
-    </div>
-    <div class="section">
-      <button id="clearDrawBtn" class="danger">Clear canvas</button>
-    </div>
-    <div class="section">
-      <button id="toRigBtn" class="primary" ${canEnterRig() ? '' : 'disabled'}>Next: Place joints →</button>
-      <p class="hint">Draw your character freehand, or upload a reference image. When you're happy with it, move to Rig to place joints.</p>
-    </div>
-  `;
+function formatBoneName(boneId) {
+  return boneId.replace(/_/g, ' ');
 }
 
-function sidebarRigHTML() {
-  if (APP.rigStep === 'joints') {
-    const items = ALL_JOINTS.map((j, i) => {
-      const placed = APP.sprite.jointPositions[j];
-      const cls = i === APP.rigJointIndex ? 'current' : (placed ? 'placed' : '');
-      return `<div class="joint-list-item ${cls}"><span class="joint-dot"></span>${JOINT_LABELS[j]}</div>`;
-    }).join('');
-    return `
-      <div class="section">
-        <h3>Place joints in order</h3>
-        <p class="hint">Click on the canvas where each joint should sit. ${APP.rigJointIndex < ALL_JOINTS.length ? `Next: <strong>${JOINT_LABELS[ALL_JOINTS[APP.rigJointIndex]]}</strong>` : 'All joints placed.'}</p>
-        ${items}
-      </div>
-      <div class="section btn-row">
-        <button id="undoJointBtn" ${APP.rigJointIndex === 0 ? 'disabled' : ''}>Undo last</button>
-        <button id="restartRigBtn" class="danger">Restart rig</button>
-      </div>
-    `;
-  }
-
-  // silhouette step
-  const hasMesh = !!APP.sprite.mesh;
-  const pointCount = APP.rigCurrentLasso.length;
-  return `
-    <div class="section">
-      <h3>Trace your character's outline</h3>
-      <p class="hint">Click points all the way around your whole character — like tracing its silhouette. This is ONE continuous outline, not per-limb. ${pointCount > 0 ? `${pointCount} point(s) placed.` : ''}</p>
-    </div>
-    <div class="section btn-row">
-      <button id="closeSilhouetteBtn" ${pointCount < 3 ? 'disabled' : ''}>Close outline & build mesh</button>
-      <button id="undoSilhouetteBtn" ${pointCount === 0 ? 'disabled' : ''}>Undo point</button>
-      <button id="clearSilhouetteBtn" ${pointCount === 0 ? 'disabled' : ''}>Clear</button>
-    </div>
-    ${hasMesh ? `
-      <div class="section">
-        <p class="hint">✓ Mesh built: ${APP.sprite.mesh.vertices.length} points, ${APP.sprite.mesh.triangles.length} triangles.</p>
-      </div>
-    ` : ''}
-    <div class="section">
-      <button id="restartRigBtn" class="danger">Restart rig</button>
-    </div>
-    ${hasMesh ? `<div class="section"><button id="toPoseBtn" class="primary">Next: Pose →</button></div>` : ''}
-  `;
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* ============================================================
+   POSE SIDEBAR
+   ============================================================ */
 function sidebarPoseHTML() {
   const frame = currentFrame();
   if (!frame) {
@@ -119,7 +58,6 @@ function sidebarPoseHTML() {
       <p class="hint">Drag any joint on the canvas to pose it. Dragging the hip moves the whole body.</p>
     </div>
     <div class="section">
-      <label class="field"><input type="checkbox" id="wireframeToggle" ${APP.showWireframe ? 'checked' : ''} /> Show mesh wireframe</label>
       <button id="toggleTableBtn">${APP.showAngleTable ? 'Hide' : 'Show'} angle table</button>
       ${APP.showAngleTable ? `
         <table class="angle-table">
@@ -131,10 +69,14 @@ function sidebarPoseHTML() {
     <div class="section">
       <button id="saveMovementBtn" class="primary">Save movement</button>
       <button id="saveSpriteBtn">Save sprite</button>
+      <button id="resetPoseBtn" class="danger">Reset to default stickman</button>
     </div>
   `;
 }
 
+/* ============================================================
+   LIBRARY SIDEBAR
+   ============================================================ */
 function sidebarLibraryHTML() {
   return `
     <div class="section">
@@ -147,7 +89,7 @@ function sidebarLibraryHTML() {
     </div>
     <div class="section">
       <button id="loadCombinationBtn" class="primary" ${(APP.librarySelectedSpriteId && APP.librarySelectedMovementId) ? '' : 'disabled'}>Load into Pose editor</button>
-      <p class="hint">Pick a sprite and a movement from the grid, then load them together — even if the movement was made on a different sprite.</p>
+      <p class="hint">Pick a sprite and a movement from the grid, then load them together — a movement made on one character works on any other character with the same skeleton.</p>
     </div>
     <div class="section">
       <button id="refreshLibraryBtn">Refresh</button>
@@ -155,8 +97,29 @@ function sidebarLibraryHTML() {
   `;
 }
 
-function escapeAttr(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+/* ============================================================
+   EXPORT SIDEBAR
+   ============================================================ */
+function sidebarExportHTML() {
+  const frameCount = APP.currentMovement.frames.length;
+  return `
+    <div class="section">
+      <h3>Sprite sheet export</h3>
+      <p class="hint">Exports the current movement ("${escapeHtml(APP.currentMovement.name)}", ${frameCount} frame${frameCount === 1 ? '' : 's'}) as a single PNG strip — one column per frame, ready to slice in Unity, Godot, GameMaker, or Phaser.</p>
+    </div>
+    <div class="section">
+      <label class="field">Frame size (px)</label>
+      <input type="number" id="exportFrameSizeInput" min="32" step="32" value="${APP.exportFrameSize}" />
+      <p class="hint">Each frame is rendered into a square cell of this size.</p>
+    </div>
+    <div class="section">
+      <button id="downloadSheetBtn" class="primary">Download sprite sheet (PNG)</button>
+      <button id="downloadGifBtn">Download animated GIF preview</button>
+    </div>
+    <div class="section">
+      <p class="hint">Want a different pose sequence? Go back to the Pose tab, build the frames you want, then come back here to export.</p>
+    </div>
+  `;
 }
 
 /* ============================================================
@@ -215,49 +178,7 @@ function renderFrameThumbnail(frame) {
    SIDEBAR EVENT WIRING
    ============================================================ */
 function wireSidebarEvents() {
-  if (APP.mode === 'draw') {
-    const nameInput = document.getElementById('spriteNameInput');
-    if (nameInput) nameInput.addEventListener('change', (e) => { APP.sprite.name = e.target.value || 'Untitled sprite'; refreshTabs(); });
-
-    const uploadBtn = document.getElementById('uploadImgBtn');
-    const uploadInput = document.getElementById('uploadImgInput');
-    if (uploadBtn && uploadInput) {
-      uploadBtn.addEventListener('click', () => uploadInput.click());
-      uploadInput.addEventListener('change', (e) => {
-        if (e.target.files && e.target.files[0]) handleImageUpload(e.target.files[0]);
-      });
-    }
-    document.querySelectorAll('.swatch').forEach((sw) => {
-      sw.addEventListener('click', () => { APP.drawColor = sw.getAttribute('data-color'); renderSidebar(); });
-    });
-    const sizeRange = document.getElementById('brushSizeRange');
-    if (sizeRange) sizeRange.addEventListener('input', (e) => {
-      APP.drawSize = parseInt(e.target.value, 10);
-      document.getElementById('brushSizeLabel').textContent = APP.drawSize;
-    });
-    const clearBtn = document.getElementById('clearDrawBtn');
-    if (clearBtn) clearBtn.addEventListener('click', clearDrawing);
-    const toRigBtn = document.getElementById('toRigBtn');
-    if (toRigBtn) toRigBtn.addEventListener('click', () => setMode('rig'));
-
-  } else if (APP.mode === 'rig') {
-    const undoJointBtn = document.getElementById('undoJointBtn');
-    if (undoJointBtn) undoJointBtn.addEventListener('click', undoLastJoint);
-    const restartBtn = document.getElementById('restartRigBtn');
-    if (restartBtn) restartBtn.addEventListener('click', restartRig);
-    const closeSilhouetteBtn = document.getElementById('closeSilhouetteBtn');
-    if (closeSilhouetteBtn) closeSilhouetteBtn.addEventListener('click', closeSilhouetteAndBuildMesh);
-    const undoSilhouetteBtn = document.getElementById('undoSilhouetteBtn');
-    if (undoSilhouetteBtn) undoSilhouetteBtn.addEventListener('click', undoSilhouettePoint);
-    const clearSilhouetteBtn = document.getElementById('clearSilhouetteBtn');
-    if (clearSilhouetteBtn) clearSilhouetteBtn.addEventListener('click', clearSilhouette);
-    const toPoseBtn = document.getElementById('toPoseBtn');
-    if (toPoseBtn) toPoseBtn.addEventListener('click', () => {
-      ensureAtLeastOneFrame();
-      setMode('pose');
-    });
-
-  } else if (APP.mode === 'pose') {
+  if (APP.mode === 'pose') {
     const nameInput = document.getElementById('movementNameInput');
     if (nameInput) nameInput.addEventListener('change', (e) => { APP.currentMovement.name = e.target.value || 'Untitled movement'; });
     const durInput = document.getElementById('frameDurationInput');
@@ -266,8 +187,6 @@ function wireSidebarEvents() {
     if (rootX) rootX.addEventListener('change', (e) => setRootPosFromTable('x', e.target.value));
     const rootY = document.getElementById('rootYInput');
     if (rootY) rootY.addEventListener('change', (e) => setRootPosFromTable('y', e.target.value));
-    const wireframeToggle = document.getElementById('wireframeToggle');
-    if (wireframeToggle) wireframeToggle.addEventListener('change', (e) => { APP.showWireframe = e.target.checked; redrawStage(); });
     const toggleTableBtn = document.getElementById('toggleTableBtn');
     if (toggleTableBtn) toggleTableBtn.addEventListener('click', () => { APP.showAngleTable = !APP.showAngleTable; renderSidebar(); });
     document.querySelectorAll('.angle-input').forEach((inp) => {
@@ -279,11 +198,37 @@ function wireSidebarEvents() {
     if (saveSpriteBtn) saveSpriteBtn.addEventListener('click', saveCurrentSprite);
     const addFrameBtnSidebar = document.getElementById('addFrameBtnSidebar');
     if (addFrameBtnSidebar) addFrameBtnSidebar.addEventListener('click', addFrame);
+    const resetPoseBtn = document.getElementById('resetPoseBtn');
+    if (resetPoseBtn) resetPoseBtn.addEventListener('click', () => {
+      loadBuiltInStickman();
+      renderSidebar();
+      renderTimeline();
+      redrawStage();
+      setStatus('Reset to the default stickman.', null);
+    });
 
   } else if (APP.mode === 'library') {
     const loadBtn = document.getElementById('loadCombinationBtn');
     if (loadBtn) loadBtn.addEventListener('click', loadSelectedCombination);
     const refreshBtn = document.getElementById('refreshLibraryBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', refreshLibrary);
+
+  } else if (APP.mode === 'export') {
+    const sizeInput = document.getElementById('exportFrameSizeInput');
+    if (sizeInput) sizeInput.addEventListener('change', (e) => {
+      const n = parseInt(e.target.value, 10);
+      if (!Number.isNaN(n) && n >= 32) APP.exportFrameSize = n;
+    });
+    const downloadSheetBtn = document.getElementById('downloadSheetBtn');
+    if (downloadSheetBtn) downloadSheetBtn.addEventListener('click', downloadSpriteSheet);
+    const downloadGifBtn = document.getElementById('downloadGifBtn');
+    if (downloadGifBtn) downloadGifBtn.addEventListener('click', downloadAnimatedGifPreview);
   }
+}
+
+function renderExportPanel() {
+  // Export mode currently has no extra canvas-drawn preview beyond the
+  // standard redrawStage() pose preview; nothing extra needed here.
+  // Kept as a named hook so app.js's setMode() has a stable function
+  // to call regardless of which mode is active.
 }

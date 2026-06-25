@@ -2,20 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Sprite Mesh Studio</title>
+<title>Stickman Sprite Maker</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div class="app" id="app">
 
   <div class="tabbar">
-    <span class="brand">Sprite Mesh Studio</span>
-    <div class="tab active" data-tab="draw">1 · Draw</div>
-    <div class="tab disabled" data-tab="rig">2 · Rig</div>
-    <div class="tab disabled" data-tab="pose">3 · Pose</div>
+    <span class="brand">Stickman Sprite Maker</span>
+    <div class="tab active" data-tab="pose">Pose</div>
     <div class="tab" data-tab="library">Library</div>
+    <div class="tab" data-tab="export">Export</div>
     <div class="spacer"></div>
-    <span class="sprite-name-badge" id="spriteNameBadge">No sprite yet</span>
+    <span class="sprite-name-badge" id="spriteNameBadge">No sprite loaded</span>
   </div>
 
   <div class="body">
@@ -24,41 +23,40 @@
       <div class="stage-area">
         <canvas id="stageCanvas" width="480" height="480"></canvas>
       </div>
-      <div class="timeline-wrap hidden" id="timelineWrap">
+      <div class="timeline-wrap" id="timelineWrap">
         <div class="timeline-strip" id="timelineStrip"></div>
       </div>
     </div>
   </div>
 
-  <div class="statusbar" id="statusbar">Draw your character, or upload an image to begin.</div>
+  <div class="statusbar" id="statusbar">Drag any joint to pose the stickman. Build a few frames, then export a sprite sheet.</div>
 </div>
 
 <!--
   Scripts must load in this exact order — each one depends on globals
   defined by the files before it:
-    1. storage.js   - localStorage shim + save/load functions
-    2. skeleton.js  - the fixed joint/bone graph (SKELETON, ALL_JOINTS)
-    3. fk.js        - forward-kinematics solver + bone transforms (needs SKELETON)
-    4. rig.js       - bind-pose -> bindInfo derivation (needs SKELETON)
-    5. mesh.js      - silhouette triangulation + skinning weights + deformation
-    6. app.js       - APP state, canvas refs, setMode/tab wiring
-    7. draw.js      - DRAW mode + shared pointer-event wiring
-    8. rigging.js   - RIG mode (joint placement + silhouette tracing)
-    9. pose.js      - POSE mode (keyframes, joint-drag-to-angle math)
-   10. render.js    - the mesh-deform draw pipeline (triangle texture mapping)
-   11. ui.js        - sidebar/timeline HTML + all their event wiring
-   12. bootstrap.js - MUST be last: triggers the very first render
+    1. storage.js          - localStorage shim + save/load functions
+    2. skeleton.js         - the fixed joint/bone graph (SKELETON, ALL_JOINTS)
+    3. fk.js               - forward-kinematics solver + bone transforms
+    4. default-stickman.js - the built-in stickman's rigid pieces + bind pose
+    5. app.js              - APP state, canvas refs, setMode/tab wiring
+    6. input.js            - pointer-event coordinate conversion + wiring
+    7. pose.js             - keyframes, joint-drag-to-angle math
+    8. render.js           - draws rigid pieces via FK (no shared mesh,
+                              so body parts can never warp into each other)
+    9. export.js           - sprite sheet PNG + animated GIF preview
+   10. ui.js               - sidebar/timeline HTML + all their event wiring
+   11. bootstrap.js        - MUST be last: loads the stickman, first render
 -->
 <script src="src/storage.js"></script>
 <script src="src/skeleton.js"></script>
 <script src="src/fk.js"></script>
-<script src="src/rig.js"></script>
-<script src="src/mesh.js"></script>
+<script src="src/default-stickman.js"></script>
 <script src="src/app.js"></script>
-<script src="src/draw.js"></script>
-<script src="src/rigging.js"></script>
+<script src="src/input.js"></script>
 <script src="src/pose.js"></script>
 <script src="src/render.js"></script>
+<script src="src/export.js"></script>
 <script src="src/ui.js"></script>
 <script src="src/bootstrap.js"></script>
 </body>

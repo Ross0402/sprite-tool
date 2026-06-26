@@ -1,86 +1,77 @@
 // ============================================================
 // render.js
 // Draws a posed sprite using RIGID PER-PART PIECES, matching how
-// Spine, Unity 2D Animation, and DragonBones rig by default: each
-// body part is its own piece of art, pinned to exactly one bone, and
-// moves as a single rigid unit. This is what makes the warping bug
-// from the mesh-deform approach structurally impossible here — there
-// is no shared mesh connecting the head to a hand or one leg to the
-// other, so nothing can pull on a part it isn't attached to.
+// Spine, Unity 2D Animation, DragonBones, and Pivot Animator all rig
+// by default: each body part is pinned to exactly one bone and moves
+// as a single rigid unit. This is what makes cross-part warping
+// structurally impossible — there's no shared mesh connecting the
+// head to a hand or one leg to the other.
+//
+// VISUAL STYLE: thick stroked line segments + round joint handles,
+// matching Pivot Animator's stick figure exactly (heavy black lines,
+// large round head, bold joint dots) rather than thin capsule fills.
+// This is simpler AND more reliable — plain stroke/arc calls instead
+// of Path2D parsing of generated SVG path strings.
 //
 // Depends on: skeleton.js, fk.js.
 // ============================================================
 
-// Draws ONE piece (a Path2D built from its SVG path string, or a
-// circle for the head) at its bone's current world transform.
-function drawPiece(ctx, piece, position, angleDeg) {
-  ctx.save();
-  ctx.translate(position.x, position.y);
-  ctx.rotate((angleDeg * Math.PI) / 180);
-  ctx.fillStyle = piece.color;
-
-  if (piece.isHead) {
-    ctx.beginPath();
-    ctx.arc(0, 0, piece.width / 2, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (piece.path2d) {
-    ctx.fill(piece.path2d);
-  }
-
-  ctx.restore();
+// Draws one bone as a thick line from its start to end joint.
+function drawLimbSegment(ctx, from, to, lineWidth, color) {
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.stroke();
 }
 
-// Lazily builds and caches a Path2D for each piece's SVG path string,
-// since Path2D objects are relatively expensive to construct and the
-// path itself never changes after the sprite is created.
-function ensurePiecePaths(sprite) {
-  Object.keys(sprite.parts).forEach((boneId) => {
-    const piece = sprite.parts[boneId];
-    if (!piece.isHead && piece.svgPath && !piece.path2d) {
-      piece.path2d = new Path2D(piece.svgPath);
-    }
-  });
+function drawHead(ctx, center, radius, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Top-level: given a sprite (parts + bindInfo) and a pose, draw every
-// piece at its current FK-solved position/rotation. Draw order follows
-// SKELETON.bones order (parent-before-child), with torso first so
-// limbs layer naturally on top — matching the original v1 hierarchy
-// (back limbs -> torso -> head -> front limbs) closely enough for a
-// simple stick figure without needing explicit z-ordering per pose.
+// limb segment + the head at its current FK-solved position. Draw
+// order follows the skeleton's natural hierarchy (torso/limbs first,
+// head last) so the head reads clearly on top, same as Pivot.
 function drawPosedSprite(ctx, sprite, pose) {
   if (!sprite.parts || !sprite.bindInfo) return null;
-  ensurePiecePaths(sprite);
 
   const { solved } = FK.boneTransforms(sprite.bindInfo, pose);
+  const j = solved.joints;
 
-  // Draw back-to-front: right-side limbs (back), torso, head, then
-  // left-side limbs (front) -- a simple fixed convention that reads
-  // correctly for a side-on or front-on stick figure without needing
-  // per-frame depth sorting.
   const drawOrder = [
     'R_forearm', 'R_upperArm', 'R_shin', 'R_thigh',
     'torso',
     'L_thigh', 'L_shin', 'L_upperArm', 'L_forearm',
-    'head',
   ];
 
   drawOrder.forEach((boneId) => {
     const piece = sprite.parts[boneId];
     if (!piece) return;
     const bone = SKELETON.bones.find((b) => b.id === boneId);
-    const position = solved.joints[bone.fromJoint];
-    const angleDeg = solved.boneWorldAngles[boneId];
-    drawPiece(ctx, piece, position, angleDeg);
+    drawLimbSegment(ctx, j[bone.fromJoint], j[bone.toJoint], piece.lineWidth, piece.color);
   });
 
-  return solved.joints;
+  // Head drawn last, on top, as a filled circle at the head joint —
+  // matching Pivot's bold round head.
+  const headPiece = sprite.parts.head;
+  if (headPiece) {
+    drawHead(ctx, j.head, headPiece.radius, headPiece.color);
+  }
+
+  return j;
 }
 
 function drawJointHandles(ctx, jointPositions, opts) {
   opts = opts || {};
-  const radius = opts.radius || 5;
+  const radius = opts.radius || 7;
   Object.keys(jointPositions).forEach((name) => {
+    if (name === 'head') return; // head already drawn as the head circle itself
     const p = jointPositions[name];
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
@@ -88,20 +79,6 @@ function drawJointHandles(ctx, jointPositions, opts) {
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = opts.stroke || '#1c1b1a';
-    ctx.stroke();
-  });
-}
-
-function drawSkeletonLines(ctx, jointPositions) {
-  ctx.strokeStyle = '#d9775788';
-  ctx.lineWidth = 2;
-  SKELETON.bones.forEach((bone) => {
-    const a = jointPositions[bone.fromJoint];
-    const b = jointPositions[bone.toJoint];
-    if (!a || !b) return;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
     ctx.stroke();
   });
 }
@@ -119,7 +96,6 @@ function redrawStage() {
     if (frame && APP.sprite.parts) {
       const joints = drawPosedSprite(SCTX, APP.sprite, frame);
       if (joints) {
-        drawSkeletonLines(SCTX, joints);
         drawJointHandles(SCTX, joints, { fill: '#d97757' });
       }
     }

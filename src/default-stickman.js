@@ -1,50 +1,34 @@
 // ============================================================
 // default-stickman.js
-// A ready-made stickman character: each body part is a small SVG path
-// (a rounded capsule shape) you can drag onto the canvas immediately,
-// with no drawing required. Pieces are RIGID (not a deformable mesh) —
-// this matches how Spine, Unity 2D Animation, and DragonBones rig by
-// default: separate art pieces, each pinned to one bone, rather than
-// one continuous mesh with skinning weights. Rigid pieces can't warp
-// into each other, since there's no shared mesh for that to happen on.
+// A ready-made stickman character: thick black line segments for
+// limbs/torso and a bold round head, matching Pivot Animator's actual
+// visual style. Sized to fill a good portion of the 480px stage,
+// like Pivot's figures do, instead of a small thin sketch.
+//
+// Pieces are RIGID (not a deformable mesh) — matching how Spine,
+// Unity 2D Animation, DragonBones, and Pivot all rig by default:
+// separate pieces, each pinned to one bone, so nothing can warp into
+// a part it isn't attached to.
 //
 // Each piece definition includes:
-//   id          - matches a bone id in skeleton.js
-//   length      - the piece's length along its bone direction (px)
-//   width       - the piece's thickness
-//   svgPath     - a capsule/rounded-rect path, drawn pointing "down"
-//                 (+y) from (0,0) to (0,length), in the piece's own
-//                 local space, with (0,0) as the pivot (attaches to
-//                 the bone's fromJoint)
-//   color       - fill color
+//   length     - the bone's length (px) — used for FK, not drawing
+//                directly (segments are drawn joint-to-joint)
+//   lineWidth  - stroke thickness for limb segments
+//   color      - stroke/fill color
 // ============================================================
 
 const DEFAULT_STICKMAN_PARTS = {
-  torso: { length: 56, width: 14, color: '#2b2b2b' },
-  head: { length: 0, width: 36, color: '#2b2b2b', isHead: true }, // head is a circle, not a capsule
-  L_upperArm: { length: 30, width: 10, color: '#2b2b2b' },
-  L_forearm: { length: 26, width: 9, color: '#2b2b2b' },
-  R_upperArm: { length: 30, width: 10, color: '#2b2b2b' },
-  R_forearm: { length: 26, width: 9, color: '#2b2b2b' },
-  L_thigh: { length: 38, width: 12, color: '#2b2b2b' },
-  L_shin: { length: 36, width: 10, color: '#2b2b2b' },
-  R_thigh: { length: 38, width: 12, color: '#2b2b2b' },
-  R_shin: { length: 36, width: 10, color: '#2b2b2b' },
+  torso: { length: 110, lineWidth: 14, color: '#1a1a1a' },
+  head: { radius: 38, color: '#1a1a1a', isHead: true },
+  L_upperArm: { length: 60, lineWidth: 11, color: '#1a1a1a' },
+  L_forearm: { length: 54, lineWidth: 10, color: '#1a1a1a' },
+  R_upperArm: { length: 60, lineWidth: 11, color: '#1a1a1a' },
+  R_forearm: { length: 54, lineWidth: 10, color: '#1a1a1a' },
+  L_thigh: { length: 70, lineWidth: 13, color: '#1a1a1a' },
+  L_shin: { length: 66, lineWidth: 11, color: '#1a1a1a' },
+  R_thigh: { length: 70, lineWidth: 13, color: '#1a1a1a' },
+  R_shin: { length: 66, lineWidth: 11, color: '#1a1a1a' },
 };
-
-// Builds a rounded-capsule SVG path string for a piece of the given
-// length/width, running from (0,0) to (0,length) in local space.
-function capsulePathString(length, width) {
-  const r = width / 2;
-  if (length <= 0) return ''; // head uses a circle instead, handled separately
-  return [
-    `M ${-r} ${r}`,
-    `A ${r} ${r} 0 0 1 ${r} ${r}`,
-    `L ${r} ${length - r}`,
-    `A ${r} ${r} 0 0 1 ${-r} ${length - r}`,
-    `Z`,
-  ].join(' ');
-}
 
 // Returns a ready-to-use sprite definition object matching the same
 // shape `serializeSprite()` would produce, so it can be loaded exactly
@@ -54,11 +38,11 @@ function buildDefaultStickmanSprite() {
   Object.keys(DEFAULT_STICKMAN_PARTS).forEach((boneId) => {
     const def = DEFAULT_STICKMAN_PARTS[boneId];
     parts[boneId] = {
-      length: def.length,
-      width: def.width,
+      length: def.length || 0,
+      lineWidth: def.lineWidth || 0,
+      radius: def.radius || 0,
       color: def.color,
       isHead: !!def.isHead,
-      svgPath: def.isHead ? null : capsulePathString(def.length, def.width),
     };
   });
   return {
@@ -71,46 +55,40 @@ function buildDefaultStickmanSprite() {
 
 // Since the default stickman's proportions are fixed and known (not
 // derived from user clicks), its bindInfo can be built directly from
-// the part lengths plus the skeleton's built-in rest angles, skipping
-// the "click 13 joints" step entirely for this character.
+// the part lengths plus a clean standing-pose set of rest angles,
+// skipping any manual rigging step entirely for this character.
 function buildDefaultStickmanBindInfo() {
   const boneLength = {};
   Object.keys(DEFAULT_STICKMAN_PARTS).forEach((boneId) => {
     const def = DEFAULT_STICKMAN_PARTS[boneId];
     // The head "bone" still needs a nonzero length for FK purposes (the
-    // neck-to-head distance), even though the head PIECE itself is a
-    // circle drawn at that point, not a capsule along the bone.
-    boneLength[boneId] = def.isHead ? 14 : def.length;
+    // neck-to-head distance), even though the head PIECE itself is
+    // drawn as a circle at that point, not a line segment.
+    boneLength[boneId] = def.isHead ? def.radius * 0.6 : def.length;
   });
 
   const restAnglesRelative = {
     torso: 0,
     head: 0,
-    // Clean symmetric standing T-pose-ish stance: arms angled slightly
-    // down and out from the shoulder, legs straight down. These are
-    // INTENTIONALLY different from skeleton.js's generic restAngleDeg
-    // defaults (100/-100/170/-170), which were tuned as a fallback for
-    // arbitrary user-drawn rigs, not for what a clean default stance
-    // should look like -- using those directly here swung the arms to
-    // the wrong side and crossed them over the body.
-    // Arms hang down at the sides, splayed slightly outward -- same
-    // "180deg = opposite of torso's up direction" logic as the legs.
-    L_upperArm: -165, L_forearm: -10,
-    R_upperArm: 165, R_forearm: 10,
-    // Leg angles are relative to the TORSO's direction (which itself
-    // points "up", 0deg). To make legs hang DOWN from the hip, the
-    // relative angle needs to be close to 180 degrees (the opposite of
-    // up), not a small offset near 0 -- a small offset just continues
-    // pointing up, the same direction as the spine/head.
-    L_thigh: -172, L_shin: 0,
-    R_thigh: 172, R_shin: 0,
+    // Arms hang down at the sides, splayed slightly outward. Angles
+    // are relative to the TORSO's own direction (0deg = up), so 180deg
+    // = straight down, the opposite of the torso/head direction.
+    L_upperArm: -170, L_forearm: -8,
+    R_upperArm: 170, R_forearm: 8,
+    // Legs hang straight down from the hip, slightly apart.
+    L_thigh: -174, L_shin: 0,
+    R_thigh: 174, R_shin: 0,
   };
 
   return {
     boneLength,
+    // Arms attach close to the top of the torso line, with only a
+    // small sideways offset -- Pivot's stick figures attach arms
+    // almost directly on the torso line, not far out at true
+    // shoulder-width.
     shoulderOffset: {
-      L_shoulder: { along: 1.0, perp: -DEFAULT_STICKMAN_PARTS.torso.width / 2 - 2 },
-      R_shoulder: { along: 1.0, perp: DEFAULT_STICKMAN_PARTS.torso.width / 2 + 2 },
+      L_shoulder: { along: 0.92, perp: -6 },
+      R_shoulder: { along: 0.92, perp: 6 },
     },
     restAnglesRelative,
     hipBindPos: { x: 0, y: 0 }, // caller positions this; see app.js loadBuiltInStickman()
